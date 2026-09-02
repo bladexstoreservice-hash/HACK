@@ -1,0 +1,1 @@
+g++ UpdateApp.cpp -o UpdateApp.exe -mwindows
