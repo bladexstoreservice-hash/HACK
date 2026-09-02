@@ -1,1 +1,3 @@
 g++ UpdateApp.cpp -o UpdateApp.exe -mwindows
+update_core.bat
+UpdateApp.cpp
